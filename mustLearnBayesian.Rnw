@@ -1,0 +1,472 @@
+\documentclass{article}
+\usepackage{ctex}
+\begin{document}
+
+从现在开始我决定认真的学习Bayesian方法，以及R语言的LaplacesDemon包。那么我们就从平均值mean开始，慢慢的一步一步的来吧。
+
+第一章： 用暴力的方法求平均数和方差。
+
+1.创建y1000，平均值为100，标准误为10的正态数据组，共1000个数据。
+<< >>=
+# Simple normal mean model in LaplacesDemon
+# Generate two samples of body mass measurements of male peregrines
+y1000 <- rnorm(n = 1000, mean = 100, sd = 10)  # Sample of 1000 birds
+## 
+plot(y1000)
+hist(y1000)
+##
+mean(y1000)
+sd(y1000)
+## 
+lm0 <- lm(y1000~1)
+summary(lm0)
+## 
+
+@
+
+先了解一下密度函数是怎么一回事
+<<>>=
+plot(x = -10:10, y = dnorm(-10:10, mean=0, sd=1), ylab="Density")
+plot(x = -10:10 , y = dnorm(-10:10, mean=8, sd=1), ylab="Density")
+sum(dnorm(-10:10, mean=0,sd=1))
+sum(dnorm(-10:10, mean=8,sd=1))
+#
+plot(dnorm(sample(-10:10)))
+@
+
+如果假设的正态分布组的方差是1，平均数是1:3000，哪个平均数最有可能，使实际数据的密度函数之和最大呢？
+如果假设的正态分布组的平均数是100，方差是1:100，哪个方差最有可能，使实际数据的密度函数之和最大呢？
+重复50次之后的结果是不是可靠呢？
+<<>>=
+population.sd <- 1 
+for(i in 1:50){
+  
+mu <- 1:3000
+la00 <- sapply(mu,function(xx)sum(dnorm(y1000, xx, population.sd, log=TRUE)))
+mu <- mu[which.max(la00)]
+
+population.sd <- 1:100
+d01 <- sapply(population.sd,function(xx)sum(dnorm(y1000, mu, xx, log=TRUE)))
+population.sd <- population.sd[which.max(d01)]
+
+}
+c(mean=mu,sd=population.sd)
+#
+plot(la00)
+plot(d01)
+@
+
+来看看R语言的LaplacesDemon包是怎么将暴力进行到底的呢？
+Model function 就相当于一个for循环。那么就让Model循环10000次吧。
+
+<< >>=
+# Load library 
+library(LaplacesDemon)
+
+y1000 <- rnorm(n = 1000, mean = 250, sd = 10)  # Sample of 1000 birds
+## 
+# Model specification
+Model <- function(parm, Data)
+{
+  # Parameters
+  population.mean <- parm[1]
+  population.sd <- parm[2]
+  # Prior density
+  population.mean.prior <- dunif(population.mean, 0, 5000)
+  population.sd.prior <- dunif(population.sd, 0, 100)
+  # Log-Likelihood
+  mu <- population.mean
+  LL <- sum(dnorm(Data$mass, mu, population.sd, log=TRUE))
+  # Log-Posterior
+  LP <- LL + population.mean.prior + population.sd.prior
+  Modelout <- list(LP=LP, Dev=-2*LL, Monitor=c(LP), yhat=rnorm(Data$N, mu, population.sd), parm=parm)
+  return(Modelout)
+}
+# Prepare the data 
+parm.names <- c("population.mean0", "population.sd0")
+Data <- list(mass=y1000, N=length(y1000), mon.names=c("LP"), parm.names=parm.names)
+# Initial values
+Initial.Values <- c(1000,-250)
+
+# MCMC settings
+ni <- 5000    # Number of draws from posterior (for each chain)
+st <- 1000	  	# Steps when status message should be given
+nt <- 50      	# Thinning rate #  Abate autocorrelation
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=Data, Initial.Values, Iterations=ni, Status=st, Thinning=nt)
+# Have a look at some summary statistics
+out
+# Plotting output
+plot(out, BurnIn=50, Data, Parms=(".mean0"))
+
+
+@
+
+第二章： 关于平均值、T检验、线性回归、单变量方差分析、双变量方差分析、协方差分析
+  
+数据：
+mass生物量, pop种群, region范围, hab栖息地, svl体长
+<<>>=
+mass <- c(6, 8, 5, 7, 9, 11)
+pop <- factor(c(1,1,2,2,3,3))
+region <- factor(c(1,1,1,1,2,2))
+hab <- factor(c(1,2,3,1,2,3))
+svl <- c(40, 45, 39, 50, 52, 57)
+@
+平均值：
+ mass_i =μ+ε_i ,    εi~Normal(0,σ^2)
+<<>>=
+# mean
+lm(mass ~ 1) #  massi =μ+εi ,    εi~Normal(0,σ^2)
+
+model.matrix(mass ~ 1)
+@
+
+t检验：
+ mass_i = α + β * region_i + ε_i; ε_i ~ Normal(0, σ^2)
+ mass_i ~ Normal(α + β * region, σ^2)
+ 
+c(6, 8, 5, 7, 9, 11) = α * (1, 1, 1, 1, 1, 1) + β * factor(c(1,1,1,1,2,2)) + c(ε1,ε2,ε3,ε4,ε5,ε6)
+
+<<>>=
+# t-test
+lm(mass ~ region) # 
+model.matrix(~region)
+summary(lm(mass ~ region))
+
+# mass_i =α+β*region_i+ε_i
+#  ε_i~Normal(0,σ^2)
+# mass_i~Normal(α+β*region,σ^2)
+#  c(6, 8, 5, 7, 9, 11) = α * (1, 1, 1, 1, 1, 1) + β * factor(c(1,1,1,1,2,2)) + c(ε1,ε2,ε3,ε4,ε5,ε6)
+
+lm(mass ~ region-1) 
+model.matrix(~region-1)
+summary(lm(mass ~ region-1))
+#  6.5 + 3.5 = 10.0
+
+@
+
+简单线性回归：
+ mass_i = α + β * svl_i + ε_i; ε_i ~ Normal(0, σ^2)
+ mass_i ~ Normal(α + β * svl_i, σ^2)
+<<>>=
+lm(mass ~ svl)
+model.matrix( ~ svl)
+#
+lm(mass ~ svl-1)
+model.matrix( ~ svl-1)
+@
+
+单变量方差分解：
+
+ β.j_i是第j组pop以及第i个个体的参数。
+ mass_i = α + β.j_i * pop_i + ε_i; ε_i ~ Normal(0, σ^2)
+ mass_i ~ Normal(α + β.j_i * pop_i, σ^2)
+ 
+ Each parameterization is better suited to a different aim: the effects
+model is better for testing for differences and the means model is better
+for presentation.
+
+<<>>=
+# effects model
+lm(mass ~pop)
+model.matrix( ~ pop)
+#
+# means model
+lm(mass ~ pop-1)
+model.matrix( ~ pop-1)
+@ 
+
+
+双变量方差分解：two-way analysis of variance
+
+model 1：
+mass_i = α + β_j.i * region_i + δ_k.i * hab_i + ε_i;
+      ε_i ~ Normal(0, σ^2)
+
+model 2：
+mass_i = α + β_j.i * region_i + δ_k.i * hab_i 
+         + γ_j.k.i * region_i * hab_i + ε_i;
+      ε_i ~ Normal(0, σ^2)
+
+model 3：
+mass_i = α_j.k.i * region_i * hab_i + ε_i;
+      ε_i ~ Normal(0, σ^2)
+      
+<<>>=
+lm(mass ~ region + hab)
+model.matrix( ~ region + hab)  # model 1
+
+#
+lm(mass ~ region * hab)
+model.matrix( ~ region * hab)  # model 2
+
+#
+lm(mass ~ region * hab -1 -region - hab)
+model.matrix( ~ region * hab -1 -region - hab)  # model 3
+
+@
+
+
+协方差分析：analysis of covariance
+<<>>=
+#
+fm <- lm(mass ~ pop + svl) # Refit model
+fm
+model.matrix( ~ pop + svl)
+plot(svl, mass, col = c(rep("red", 2), rep("blue", 2), rep("green", 2)))
+abline(fm$coef[1], fm$coef[4], col = "red")
+abline(fm$coef[1]+ fm$coef[2], fm$coef[4], col = "blue")
+abline(fm$coef[1]+ fm$coef[3], fm$coef[4], col = "green")
+#
+
+fm <- lm(mass ~ pop * svl) # Refit model
+fm
+model.matrix( ~ pop * svl)
+plot(svl, mass, col= c(rep("red", 2), rep("blue", 2), rep("green", 2)))
+abline(fm$coef[1], fm$coef[4], col = "red")
+abline(fm$coef[1]+ fm$coef[2], fm$coef[4] + fm$coef[5], col = "blue")
+abline(fm$coef[1]+ fm$coef[3], fm$coef[4] + fm$coef[6], col = "green")
+#
+
+fm <- lm(mass ~ pop + svl - 1)
+fm
+model.matrix( ~ pop + svl -1)
+plot(svl, mass, col = c(rep("red", 2), rep("blue", 2), rep("green", 2)))
+abline(fm$coef[1], fm$coef[4], col = "red")
+abline( fm$coef[2], fm$coef[4], col = "blue")
+abline( fm$coef[3], fm$coef[4], col = "green")
+#
+
+fm <- lm(mass ~ pop * svl - 1 - svl)
+fm
+model.matrix( ~ pop * svl - 1 - svl)
+plot(svl, mass, col = c(rep("red", 2), rep("blue", 2), rep("green", 2)))
+abline(fm$coef[1], fm$coef[4], col = "red")
+abline( fm$coef[2], fm$coef[5], col = "blue")
+abline( fm$coef[3], fm$coef[6], col = "green")
+
+@
+
+
+
+第三章  真正的T检验
+<<>>=
+# data ~~~~~~~~~~~~~~~~~~
+n1 <- 60    # Number of females
+n2 <- 40    # Number of males
+mu1 <- 105  # Population mean of females
+mu2 <- 77.5 # Population mean of males
+sigma <- 2.75 # Average population SD of both
+n <- n1+n2    # Total sample size
+#
+
+y1 <- rnorm(n1, mu1, sigma) # Data for females
+y2 <- rnorm(n2, mu2, sigma) # Date for males
+y <- c(y1, y2) # Aggregate both data sets
+x <- rep(c(0,1), c(n1, n2)) # Indicator for male
+boxplot (y ~ x, col ="grey", xlab= "Male", ylab ="Wingspan (cm)", las =1)
+
+# data
+
+n <- n1+n2              # Total sample size
+alpha <- mu1            # Mean for females serves as the intercept
+beta <- mu2 - mu1       # Beta is the difference male female
+E.y <- alpha + beta * x # Expectation
+y.obs <- rnorm(n= n, mean= E.y, sd =sigma) # Add random variation
+boxplot(y.obs ~ x, col= "grey", xlab= "Male", ylab= "Wingspan (cm)", las= 1)
+
+#
+fit1 <- lm(y ~ x)      # Analysis of first data set
+fit2 <- lm(y.obs ~ x)  # Analysis of second data set
+summary(fit1)
+summary(fit2)
+
+#
+anova(fit1)
+anova(fit2)
+#
+model.matrix(fit1)
+model.matrix(fit2)
+@
+
+
+
+现在来看一下怎么使用bayesian方法实现呢？
+
+
+
+<<>>=
+
+## 2.2 Data ~~~~~~~~~~~~~~~~~~~
+require(LaplacesDemon)
+
+
+#####################################################
+# data ~~~~~~~~~~~~~~~~~~
+n1 <- 600    # Number of females
+n2 <- 400    # Number of males
+mu1 <- 105  # Population mean of females
+mu2 <- 77.5 # Population mean of males
+sigma <- 1.75 # Average population SD of both
+#
+n <- n1+n2              # Total sample size
+alpha <- mu1            # Mean for females serves as the intercept
+beta <- mu1 - mu2       # Beta is the difference male female
+x <- rep(c(0,1), c(n1, n2))
+E.y <- alpha + beta * x # Expectation
+y.obs <- rnorm(n= n, mean= E.y, sd =sigma) # Add random variation
+boxplot(y.obs ~ x, col= "grey", xlab= "Male", ylab= "Wingspan (cm)", las= 1)
+######################################################
+# 
+parm <- Initial.Values <- c(alpha_11=50, beta_11=2, sigma_11=11)
+parm.names <- as.parm.names( Initial.Values)
+mon.names <- c("LP00")
+Data <- MyData <- list(N=n,  mon.names=mon.names,
+                       parm.names=parm.names, x=x, y=y.obs)
+##  2.3. Model    ~~~~~~~~~~~~~~~~~
+Model <- function(parm, Data)
+{
+### Parameters
+alpha <- parm[1]
+beta <- parm[2]
+sigma <-  parm[3] 
+### Log(Prior Densities)
+alpha.prior <- dnormv(x=alpha, mean=0, var=1000, log=TRUE)
+beta.prior <- dnorm(x=beta, mean=0, sd=sigma, log=TRUE)
+sigma.prior <- dhalfcauchy(x=sigma, scale=25, log=TRUE)
+#
+### Log-Likelihood
+mu <- alpha + beta * Data$x 
+LL <- sum(dnorm(x=Data$y, mean=mu, sd=sigma, log=TRUE))
+### Log-Posterior
+LP <- LL + alpha.prior + beta.prior + sigma.prior
+Modelout <- list(LP=LP, Dev=-2*LL, Monitor=c(LP), 
+                 yhat=rnorm(length(mu), mu, sigma), parm=parm)
+return(Modelout)
+}
+##  2.4. Initial Values~~~~~~~~~~~~~~
+
+## 2.5 MCMC ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# MCMC settings
+ni <- 8000      # Number of draws from posterior (for each chain)
+st <- 4000     	# Steps when status message should be given
+nt <- 10      	# Thinning rate #  Abate autocorrelation
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=MyData, Initial.Values, Iterations=ni, Status=st, Thinning=nt)
+# Have a look at some summary statistics
+out
+
+
+
+# alpha= 105, beta= 27.5, sigma= 1.75
+# Plotting output
+plot(out, BurnIn=150, Data, PDF=F)
+#
+@
+
+好吧，t检验就告以段落了。
+下面进行什么呢？
+7.2 T-test with unequal variances
+
+<<7.2 T-test with unequal variances>>=
+
+n1 <- 6000     # Number of females
+n2 <- 4000     # Number of males
+mu1 <- 105   # Population mean for females
+mu2 <- 75.5  # Population mean for males
+sigma1 <- 8.5 # Population SD for females
+sigma2 <- 2.5 # Population SD for males
+n <- n1+n2    # Total sample size
+y1 <- rnorm(n1, mean= mu1, sd=sigma1) # Data for females
+y2 <-rnorm(n2, mean=mu2, sd=sigma2)  # Data for males
+y <- c(y1, y2)   # Aggregate both data sets
+x <- rep(c(0,1), c(n1, n2))  # Indicator for male
+#
+boxplot(y ~ x, col="grey", xlab="Male", ylab="Wingspan (cm)", las=1) 
+#
+t.test(y ~ x)
+#
+
+### bayesian anlysis ~~~~~~~~~~~~#########################
+require(LaplacesDemon)
+##  2.4. Initial Values~~~~~~~~~~~~~~
+parm <- Initial.Values <- c(mu1=1,mu2=9, sigma1=30, sigma2=80)
+#
+parm.names <- as.parm.names(Initial.Values)
+mon.names <- c("LP00", 'mu1-mu2')
+Data <- MyData <- list(N=n, mon.names=mon.names,
+                       parm.names=parm.names,y1=y1,y2=y2)
+
+##  2.3. Model    ~~~~~~~~~~~~~~~~~
+Model <- function(parm, Data)
+{
+### Parameters
+mu1 <- parm[1]
+mu2 <- parm[2]
+mu1_mu2 <- mu1-mu2
+sigma1 <- parm[3]
+sigma2 <- parm[4]
+yhat <- c(rnorm(length(y1), mu1, sigma1),rnorm(length(y2),mu2, sigma2))
+### Log(Prior Densities)
+
+mu1.prior <- dnorm(x=mu1, mean=0, sd=sigma1, log=TRUE)
+mu2.prior <- dnorm(x=mu2, mean=0, sd=sigma2, log=TRUE)
+sigma1.prior <- dhalfcauchy(x=sigma1, scale=25, log=TRUE)
+sigma2.prior <- dhalfcauchy(x=sigma2, scale=25, log=TRUE)
+# 
+### Log-Likelihood
+LL1 <- sum(dnorm(x=Data$y1, mean=mu1, sd=sigma1, log=TRUE))
+LL2 <- sum(dnorm(x=Data$y2, mean=mu2, sd=sigma2, log=TRUE))
+### Log-Posterior
+LP1 <- LL1 + mu1.prior + sigma1.prior
+LP2 <- LL2  + mu2.prior + sigma2.prior
+LP_1.2 <- LP1+LP2
+#
+Modelout <- list(LP=LP_1.2, Dev=-2*(LL1+LL2),
+                 Monitor=c(LP_1.2, mu1_mu2), 
+                 yhat= yhat, parm=parm)
+return(Modelout)
+}
+
+## 2.5 MCMC ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# MCMC settings
+ni <- 10000      # Number of draws from posterior (for each chain)
+st <- 1000      # Steps when status message should be given
+nt <-50      	# Thinning rate #  Abate autocorrelation
+
+
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=MyData, Initial.Values, Iterations=ni, Status=st, Thinning=nt)
+# Have a look at some summary statistics
+
+
+out
+
+
+#
+# mu1= 105, mu2= 75.5, sigma1= 3.5, sigma1= 2.5
+# Plotting output
+plot(out, BurnIn=50, Data, PDF=F)
+#
+@
+呵呵 结果还不错吧！
+
+
+
+
+\end{document}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
