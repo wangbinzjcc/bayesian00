@@ -1,20 +1,7 @@
 ##### ====================================================================
 require(LaplacesDemon)
 ### ==================================
-GIV=function (Model, Data, n = 1000 ){
-  LIV <- length(Data$parm.names)
-  iv <- rep(NA, LIV)
- for (i in 1:n) {
-    IV <- Data$PGF(Data)
-    M <- try(Model(IV, Data), silent = TRUE)
-    if (!inherits(M, "try-error") & is.finite(M[[1]]) & is.finite(M[[2]]) & 
-          identical(as.vector(M[[5]]), IV)) 
-    {   iv <- IV
-        break
-    }          }
-  if ((i == n) | any(is.na(iv))) 
-    cat("\nWARNING: Acceptable initial values were not generated.\n")
-  return(iv)                        }
+
 ### =====================================
 Model <- function(parm, Data)
 {  beta <- parm[1:Data$J]
@@ -32,13 +19,16 @@ Model <- function(parm, Data)
   return(Modelout)
 }
 ### =======================================
-N <- 1000
+N <- 100
 J <- 5
 X <- matrix(1, N, J)
 for (j in 2:J) {X[, j] <- rnorm(N, runif(1, -3, 3), runif(1, 0.1, 1))}
 beta <- runif(J, -3, 3)
 e <- rnorm(N, 0, 0.1)
 y <- tcrossprod(X, t(beta)) + e
+# 
+#
+#
 mon.names <- c("LP", "sigma")
 parm.names <- as.parm.names(list(beta=rep(0, J), log.sigma=0))
 PGF <- function(Data) return(c(rnormv(Data$J, 0, 10), log(rhalfcauchy(1, 25))))
@@ -48,15 +38,33 @@ Data <- list(J=J, PGF=PGF, X=X, mon.names=mon.names,
 ### =========================================================
 ### =========================================================
     Iterations=100
-    Stop.Tolerance=1.0E-5
+    Stop.Tolerance=1.0E-4
 ### 
+GIV=function (Model, Data, n = 100 ){
+  LIV <- length(Data$parm.names)
+  iv <- rep(NA, LIV)
+  for (i in 1:n) {# i=1 
+    IV <- Data$PGF(Data)
+    M <- try(Model(IV, Data), silent = TRUE)
+    if (!inherits(M, "try-error") & is.finite(M[[1]]) & is.finite(M[[2]]) & 
+          identical(as.vector(M[[5]]), IV)) 
+    {   iv <- IV
+        break
+    }          }
+  if ((i == n) | any(is.na(iv))) 
+    cat("\nWARNING: Acceptable initial values were not generated.\n")
+  return(iv)                        }
+
+#
+
 Initial.Values <- GIV(Model, Data, PGF=TRUE)
      m.old <- Model(Initial.Values, Data)
      parm <- m.old[["parm"]]
  #
 ######### Begin Laplace Approximation #############
  LBFGS <- function(Model, parm, Data, Iterations, Stop.Tolerance, m.old)
-     { Dev <- matrix(m.old[["Dev"]],1,1)
+     { 
+       Dev <- matrix(m.old[["Dev"]],1,1)
        parm.len <- length(as.vector(parm))
        parm.new <- parm.old <- m.old[["parm"]]
        names(parm.new) <- names(parm.old) <- Data$parm.names

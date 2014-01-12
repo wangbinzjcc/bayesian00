@@ -1,0 +1,622 @@
+\documentclass{article}
+\usepackage{ctex}
+\begin{document}
+
+从现在开始我决定认真的学习Bayesian方法，以及R语言的LaplacesDemon包。那么我们就从平均值mean开始，慢慢的一步一步的来吧。
+
+第一章： 用暴力的方法求平均数和方差。
+
+1.创建y1000，平均值为100，标准误为10的正态数据组，共1000个数据。
+<< >>=
+# Simple normal mean model in LaplacesDemon
+# Generate two samples of body mass measurements of male peregrines
+y1000 <- rnorm(n = 1000, mean = 100, sd = 10)  # Sample of 1000 birds
+## 
+plot(y1000)
+hist(y1000)
+##
+mean(y1000)
+sd(y1000)
+## 
+lm0 <- lm(y1000~1)
+summary(lm0)
+## 
+
+@
+
+
+<<>>=
+population.sd <- 1 
+for(i in 1:50){
+  
+mu <- 1:3000
+la00 <- sapply(mu,function(xx)sum(dnorm(y1000, xx, population.sd, log=TRUE)))
+mu <- mu[which.max(la00)]
+
+population.sd <- 1:100
+d01 <- sapply(population.sd,function(xx)sum(dnorm(y1000, mu, xx, log=TRUE)))
+population.sd <- population.sd[which.max(d01)]
+
+}
+c(mean=mu,sd=population.sd)
+#
+plot(la00)
+plot(d01)
+@
+
+第二章： 关于平均值、T检验、线性回归、单变量方差分析、双变量方差分析、协方差分析  
+数据：
+mass生物量, pop种群, region范围, hab栖息地, svl体长
+<<>>=
+mass <- c(6, 8, 5, 7, 9, 11)
+pop <- factor(c(1,1,2,2,3,3))
+region <- factor(c(1,1,1,1,2,2))
+hab <- factor(c(1,2,3,1,2,3))
+svl <- c(40, 45, 39, 50, 52, 57)
+@
+平均值：
+ mass_i =μ+ε_i ,    εi~Normal(0,σ^2)
+<<>>=
+# mean
+lm(mass ~ 1) #  massi =μ+εi ,    εi~Normal(0,σ^2)
+
+model.matrix(mass ~ 1)
+@
+
+t检验：
+ mass_i = α + β * region_i + ε_i; ε_i ~ Normal(0, σ^2)
+ mass_i ~ Normal(α + β * region, σ^2)
+ 
+c(6, 8, 5, 7, 9, 11) = α * (1, 1, 1, 1, 1, 1) + β * factor(c(1,1,1,1,2,2)) + c(ε1,ε2,ε3,ε4,ε5,ε6)
+
+<<>>=
+# t-test
+lm(mass ~ region) # 
+model.matrix(~region)
+summary(lm(mass ~ region))
+
+# mass_i =α+β*region_i+ε_i
+#  ε_i~Normal(0,σ^2)
+# mass_i~Normal(α+β*region,σ^2)
+#  c(6, 8, 5, 7, 9, 11) = α * (1, 1, 1, 1, 1, 1) + β * factor(c(1,1,1,1,2,2)) + c(ε1,ε2,ε3,ε4,ε5,ε6)
+
+lm(mass ~ region-1) 
+model.matrix(~region-1)
+summary(lm(mass ~ region-1))
+#  6.5 + 3.5 = 10.0
+
+@
+
+简单线性回归：
+ mass_i = α + β * svl_i + ε_i; ε_i ~ Normal(0, σ^2)
+ mass_i ~ Normal(α + β * svl_i, σ^2)
+<<>>=
+lm(mass ~ svl)
+model.matrix( ~ svl)
+#
+lm(mass ~ svl-1)
+model.matrix( ~ svl-1)
+@
+
+单变量方差分析：
+
+ β.j_i是第j组pop以及第i个个体的参数。
+ mass_i = α + β.j_i * pop_i + ε_i; ε_i ~ Normal(0, σ^2)
+ mass_i ~ Normal(α + β.j_i * pop_i, σ^2)
+ 
+ Each parameterization is better suited to a different aim: the effects
+model is better for testing for differences and the means model is better
+for presentation.
+
+<<>>=
+# effects model
+lm(mass ~pop)
+model.matrix( ~ pop)
+#
+# means model
+lm(mass ~ pop-1)
+model.matrix( ~ pop-1)
+@ 
+
+
+双变量方差分析：two-way analysis of variance
+
+model 1：
+mass_i = α + β_j.i * region_i + δ_k.i * hab_i + ε_i;
+      ε_i ~ Normal(0, σ^2)
+
+model 2：
+mass_i = α + β_j.i * region_i + δ_k.i * hab_i 
+         + γ_j.k.i * region_i * hab_i + ε_i;
+      ε_i ~ Normal(0, σ^2)
+
+model 3：
+mass_i = α_j.k.i * region_i * hab_i + ε_i;
+      ε_i ~ Normal(0, σ^2)
+      
+<<>>=
+lm(mass ~ region + hab)
+model.matrix( ~ region + hab)  # model 1
+
+#
+lm(mass ~ region * hab)
+model.matrix( ~ region * hab)  # model 2
+
+#
+lm(mass ~ region * hab -1 -region - hab)
+model.matrix( ~ region * hab -1 -region - hab)  # model 3
+
+@
+
+
+协方差分析：analysis of covariance
+<<>>=
+#
+fm <- lm(mass ~ pop + svl) # Refit model
+fm
+model.matrix( ~ pop + svl)
+plot(svl, mass, col = c(rep("red", 2), rep("blue", 2), rep("green", 2)))
+abline(fm$coef[1], fm$coef[4], col = "red")
+abline(fm$coef[1]+ fm$coef[2], fm$coef[4], col = "blue")
+abline(fm$coef[1]+ fm$coef[3], fm$coef[4], col = "green")
+#
+
+fm <- lm(mass ~ pop * svl) # Refit model
+fm
+model.matrix( ~ pop * svl)
+plot(svl, mass, col= c(rep("red", 2), rep("blue", 2), rep("green", 2)))
+abline(fm$coef[1], fm$coef[4], col = "red")
+abline(fm$coef[1]+ fm$coef[2], fm$coef[4] + fm$coef[5], col = "blue")
+abline(fm$coef[1]+ fm$coef[3], fm$coef[4] + fm$coef[6], col = "green")
+#
+
+fm <- lm(mass ~ pop + svl - 1)
+fm
+model.matrix( ~ pop + svl -1)
+plot(svl, mass, col = c(rep("red", 2), rep("blue", 2), rep("green", 2)))
+abline(fm$coef[1], fm$coef[4], col = "red")
+abline( fm$coef[2], fm$coef[4], col = "blue")
+abline( fm$coef[3], fm$coef[4], col = "green")
+#
+
+fm <- lm(mass ~ pop * svl - 1 - svl)
+fm
+model.matrix( ~ pop * svl - 1 - svl)
+plot(svl, mass, col = c(rep("red", 2), rep("blue", 2), rep("green", 2)))
+abline(fm$coef[1], fm$coef[4], col = "red")
+abline( fm$coef[2], fm$coef[5], col = "blue")
+abline( fm$coef[3], fm$coef[6], col = "green")
+
+@
+
+
+7.2 T-test with unequal variances
+
+<<7.2 T-test with unequal variances>>=
+
+n1 <- 6000     # Number of females
+n2 <- 4000     # Number of males
+mu1 <- 105   # Population mean for females
+mu2 <- 75.5  # Population mean for males
+sigma1 <- 8.5 # Population SD for females
+sigma2 <- 2.5 # Population SD for males
+n <- n1+n2    # Total sample size
+y1 <- rnorm(n1, mean= mu1, sd=sigma1) # Data for females
+y2 <-rnorm(n2, mean=mu2, sd=sigma2)  # Data for males
+y <- c(y1, y2)   # Aggregate both data sets
+x <- rep(c(0,1), c(n1, n2))  # Indicator for male
+#
+boxplot(y ~ x, col="grey", xlab="Male", ylab="Wingspan (cm)", las=1) 
+#
+t.test(y ~ x)
+#
+
+### bayesian anlysis ~~~~~~~~~~~~#########################
+require(LaplacesDemon)
+##  2.4. Initial Values~~~~~~~~~~~~~~
+parm <- Initial.Values <- c(mu1=1,mu2=9, sigma1=30, sigma2=80)
+#
+parm.names <- as.parm.names(Initial.Values)
+mon.names <- c("LP00", 'mu1-mu2')
+Data <- MyData <- list(N=n, mon.names=mon.names,
+                       parm.names=parm.names,y1=y1,y2=y2)
+
+##  2.3. Model    ~~~~~~~~~~~~~~~~~
+Model <- function(parm, Data)
+{
+### Parameters
+mu1 <- parm[1]
+mu2 <- parm[2]
+mu1_mu2 <- mu1-mu2
+sigma1 <- parm[3]
+sigma2 <- parm[4]
+
+### Log(Prior Densities)
+
+mu1.prior <- dnorm(x=mu1, mean=0, sd=sigma1, log=TRUE)
+mu2.prior <- dnorm(x=mu2, mean=0, sd=sigma2, log=TRUE)
+sigma1.prior <- dhalfcauchy(x=sigma1, scale=25, log=TRUE)
+sigma2.prior <- dhalfcauchy(x=sigma2, scale=25, log=TRUE)
+# 
+### Log-Likelihood
+LL1 <- sum(dnorm(x=Data$y1, mean=mu1, sd=sigma1, log=TRUE))
+LL2 <- sum(dnorm(x=Data$y2, mean=mu2, sd=sigma2, log=TRUE))
+### Log-Posterior
+LP1 <- LL1 + mu1.prior + sigma1.prior
+LP2 <- LL2  + mu2.prior + sigma2.prior
+LP_1.2 <- LP1+LP2
+#
+yhat <- c(rnorm(length(y1), mu1, sigma1),rnorm(length(y2),mu2, sigma2))
+
+Modelout <- list(LP=LP_1.2, Dev=-2*(LL1+LL2),
+                 Monitor=c(LP_1.2, mu1_mu2), 
+                 yhat= yhat, parm=parm)
+return(Modelout)
+}
+
+## 2.5 MCMC ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# MCMC settings
+ni <- 10000      # Number of draws from posterior (for each chain)
+st <- 1000      # Steps when status message should be given
+nt <-50      	# Thinning rate #  Abate autocorrelation
+
+
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=MyData, Initial.Values, Iterations=ni, Status=st, Thinning=nt)
+# Have a look at some summary statistics
+
+
+out
+
+
+#
+# mu1= 105, mu2= 75.5, sigma1= 3.5, sigma1= 2.5
+# Plotting output
+plot(out, BurnIn=50, Data, PDF=F)
+#
+@
+呵呵 结果还不错吧！
+ 
+<<10.5.2 interaction-effects anova>>=
+# choose sample size
+ n.pop <- 5
+ n.elev <- 3
+ nsample <- 12
+ n <- n.pop * nsample
+  
+# create factor levels  
+ pop <- gl(n=n.pop, k=nsample, length=n)
+ elev <-gl(n=n.elev, k=nsample/n.elev, length=n)
+ 
+# choose effects
+  baseline <- 40
+  pop.effects <- c(-10, -5, 5, 10)
+  elev.effects <- c(5,10)
+  interaction.effects <- c(-2, 3, 0, 4, 4, 0, 3, -2)
+  all.effects <- c(baseline, pop.effects, elev.effects, interaction.effects)
+  sigma <- 3
+  eps <- rnorm(n,0,sigma)
+  X <- as.matrix(model.matrix(~pop*elev))
+  X
+dim(X)
+  
+  wing <- as.numeric(as.matrix(X) %*% as.matrix(all.effects)+eps)
+x11()
+boxplot(wing~elev*pop, col='grey', xlab='Elevation-by-Population', ylab='Wing length', main='Simulated data set', las=1, ylim=c(20,70) )
+  abline(h=40)
+####
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Model <- function(parm, Data){
+  ### Parameters
+  group.mean <-  parm[1 : 15]
+  sigma <- exp(parm[16])
+  ### Log(Prior Densities)
+  group.mean.prior <- sum(dnorm(group.mean, 0, 1000^0.5, log=T))
+  sigma.prior <- dgamma(sigma, 25, log=T)
+  ### Log-Likelihood
+  mean <- group.mean[rep(1:15,each=4)]
+  LL <- sum(dnorm(Data$y, mean, sigma, log=T))
+  ### Log-Posterior
+  LP <- LL + group.mean.prior + sigma.prior
+  Modelout <- list(LP=LP, Dev=-2*LL, Monitor=c(LP, sigma),
+              yhat=rnorm(length(mean), mean, sigma), parm=parm)
+return(Modelout)
+}
+#
+parm <- c(group.mean= 1:15, log.sigma=log(1))
+group.names <- paste('pop', rep(1:5, each=3),' elev', rep(1:3, times=5), sep='')  
+parm.names <- c(group.names, 'log.sigma')
+mon.names <- c('LP', 'sigma')
+Data <- list(y=wing, parm.names=parm.names,
+             mon.names=mon.names)
+#
+ni <- 100000      # Number of draws from posterior
+st <- 5000      # Steps when status message should be given
+nt <- 50       # Thinning rate #  Abate autocorrelation
+nc <- 5
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=Data, Initial.Values=parm, Iterations=ni, Status=st, Thinning=nt,Chains=nc)
+
+out
+dat <- as.data.frame(out$Summary2)[1:15,]
+x <- 1:15
+plot(x,dat$Mean[1:15],xlab='Elev-by-population',las=1,
+   ylab='predicted wing-length', cex=1.5, ylim=c(20,70))
+abline(h=40)
+segments(x, dat$Mean - dat$SD, x, dat$Mean + dat$SD)
+
+attributes(out)
+ all.effects
+# Plotting output
+plot(out, BurnIn=50, Data, PDF=F)
+  #1
+  #2
+  #3
+  #4
+  #5
+  #6
+
+@
+好了第十章结束了，接下来要进入更高级的阶段了，让我们拭目以待吧。
+
+ 
+11.2 现在来看一下线性回归里面有哪些奥秘吧？
+<<11 linear regression>>=
+#
+n <- 160 # Number of years
+a <- 40  # Intercept
+b <- -1.5 # Slope
+sigma  <- 15 # Residual variance
+x <- 1:n  # Values of covariate year
+eps <- rnorm(n, mean=0, sd=sigma)
+y <- a + b*x + eps # Assemble data set
+#
+plot((x+1989), y, xlab = "Year", las = 1, ylab = "Prop. occupied (%)",
+     cex = 1.2)
+summary(lm(y~I(x+1989)))
+abline(lm(y~I(x+1989)), col='blue',lwd=2)
+##~~~~~~~~~~~~~~~~~~~~~~~~ 
+require(LaplacesDemon)
+###################################
+#
+
+#40.3.Model
+Model<-function(parm,Data)
+{
+###Parameters
+  alpha <- parm[1]
+  beta  <- parm[2]
+  sigma <- abs(parm[3])
+###Log(PriorDensities)
+  alp.bet.prior <- sum(dnorm(c(alpha, beta), 0, 1000^.5, log=TRUE))
+  sigma.prior <- dgamma(sigma, 25, log=TRUE)
+###Log-Likelihood
+  mu <- alpha + beta * Data$x
+  LL <- sum(dnorm(Data$y, mu, sigma,log=TRUE))
+  LP <- LL + alp.bet.prior + sigma.prior
+####Model out
+y.new <- rnorm(length(mu), mu, sigma)
+  #
+  p.decline <- 1 - c(beta>=0) 
+  fit <- sum((Data$y - mu)^2)
+  fit.new <- sum((y.new-mu)^2)
+  bpvalue <- c(fit.new-fit>=0)
+  # 
+  Modelout <- list(LP=LP, Dev=-2*LL, 
+                   Monitor=c(LP, p.decline, fit, fit.new,
+                             bpvalue),
+                   yhat=y.new, parm=parm)
+  #
+  return(Modelout)
+}
+
+rnormv(200, 0, 10)
+# Initial Values
+PGF <- function(Data){return(c(rnormv(2, 0, 10), log(rhalfcauchy(1, 5))))}
+mon.names <- c('LP','p.decline','fit','fit.new','bpvalue')
+parm.names <-c('alpha', 'beta', 'log.sigma')
+Data <- MyData <- list(PGF=PGF, x=x, y=y, mon.names=mon.names,
+                       parm.names=parm.names)
+parm <- Initial.Values<-GIV(Model, Data, PGF=T)
+##8.2 MCMC ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=MyData, Initial.Values=parm, Iterations=500, Status=50, Thinning=5)
+# Have a look at some summary statistics
+out 
+#
+summary(lm(y~x))
+#
+attributes(out)
+lapply(1:28,function(x){out[[x]]})
+
+#  n <- 160       # Number of years
+#  a <- 40        # Intercept
+#  b <- -1.5      # Slope
+#  sigma  <- 15    # residuals
+#
+# Plotting output
+plot(out, BurnIn=50, Data, PDF=F)
+#   first plot
+#   second plot
+#   thrid plot
+
+@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<<12.5 random-coefficients model with correlation>>=
+
+##############################################################
+# bayesian ~~~~~~~~~~~~~~~~
+require(LaplacesDemon) 
+require(mnormt)
+#####################################
+# Define model
+n.groups <-  56
+n.sample <- 10
+n <- n.groups * n.sample
+pop <- gl(n = n.groups, k = n.sample)
+#
+original.length <- runif(n, 45, 70) # Body length (cm)
+mn <- mean(original.length)
+sd <- sd(original.length)
+cat("Mean and sd used to normalise.original length:", mn, sd, "\n\n")
+length <- (original.length- mn) / sd
+#
+Xmat <- model.matrix(~pop*length- 1- length)
+#
+intercept.mean <- 230 # Values for five hyperparameters
+intercept.sd <- 20
+slope.mean <- 60
+slope.sd <- 30
+intercept.slope.covariance <- 400
+mu.vector <- c(intercept.mean, slope.mean)
+var.cova.matrix <- matrix(c(intercept.sd^2,intercept.slope.covariance,
+intercept.slope.covariance, slope.sd^2),2,2)
+effects <- rmnorm(n = n.groups, mean = mu.vector, varcov = var.cova.matrix)
+#
+intercept.effects <- effects[,1]
+slope.effects <- effects[,2]
+all.effects <- c(intercept.effects, slope.effects) # Put them all together
+#
+lin.pred <- Xmat[,] %*% all.effects # Value of lin.predictor
+eps <- rnorm(n= n, mean= 0, sd= 30) # residuals
+mass <- lin.pred + eps # response lin.pred + residual
+###
+#
+library('lme4')
+lme.fit3 <- lmer(mass ~ length + (length | pop))
+lme.fit3
+#
+hist(mass, col= "grey") # Inspect what we've created
+#
+library("lattice")
+xyplot(mass ~ length | pop)
+
+###
+
+require(mnormt)
+
+require(LaplacesDemon) 
+
+#
+Model=function(parm, Data){
+# Priors
+ # mu.int = parm[1]
+ # mu.slope = parm[2]
+  sd.int =  abs(parm[3])
+  sd.slope =  abs(parm[4])
+  rho = parm[5]  
+ # sigma =  abs(parm[6])
+# Log(Prior Densities)   
+  # mu.sd.prior <- dnorm(c(mu.int, mu.slope), 0, 1000^.5, log=T)
+   #sigma.prior <- dgamma(c(sigma, sd.int, sd.slope), 25, log=T)
+   sigma.prior <- dgamma(c(sd.int, sd.slope), 25, log=T)
+   rho.prior <- dunif(rho,-1,1,log=T)
+# Log-likelihood  
+   cov.s.i <-  rho * sd.int * sd.slope
+   var.mat <- matrix(c(sd.int^2, cov.s.i, cov.s.i, sd.slope^2), nrow=2)
+   X.cov <- matrix(rnorm(56 * 2), nrow=56) %*% chol(var.mat)
+   alpha.beta  <-  outer(rep(1,56), c(mu.int=230, mu.slope=60)) + X.cov
+#   var(alpha.beta)
+  mu <- alpha.beta[Data$x1, 1] + alpha.beta[Data$x1, 2] * Data$x2  
+  LL <- sum(dnorm(Data$y, mu, sigma=30))
+   LP <- LL #  + sum(mu.sd.prior, sigma.prior, rho.prior) 
+# Model out
+  yhat <- rnorm(length(mu) ,mu, sigma=30)
+  Modelout <- list(LP=LP, Dev= -2*LL, Monitor=c(LP), yhat=yhat, parm=parm)
+  return(Modelout)                 }
+###
+ 
+
+#  MCMC ~~~~~~~~~~~~~~~~~~
+   parm <- c(mu.int=rnorm(1,0,1), mu.slope=rnorm(1,0,1), 
+             sd.int=rlnorm(1), sd.slope=rlnorm(1), 
+             rho=runif(1,-1,1), sigma=rlnorm(1))
+#
+
+   parm <- c(sd.int=rlnorm(1), sd.slope=rlnorm(1), 
+             rho=runif(1,-1,1))
+   parm.names <- names(parm)
+   mon.names <- c('LP')
+   Data <- list(y=mass, x1=pop, x2=length, parm.names=parm.names, mon.names=mon.names)
+   out <- LaplacesDemon(Model, Initial.Values=parm, Data=Data,
+                        Iterations=100, Status=50, Thinning=30)
+
+@
+I can't understand why the error comes!
+
+
+\end{document}
+
+ <<>>=
+#
+Model=function(parm, Data){
+# Priors
+  sd.int = abs(parm[1])
+  sd.slope = abs(parm[2])
+  rho = parm[3]  
+# Log(Prior Densities)   
+   sigma.prior <- dgamma(c(sd.int, sd.slope), 25, log=T)
+   rho.prior <- dunif(rho,-1,1,log=T)
+# Log-likelihood  
+   cov.s.i <-  rho * sd.int * sd.slope
+   var.mat <- matrix(c(sd.int^2, cov.s.i, cov.s.i, sd.slope^2), nrow=2)
+  X.cov <- matrix(rnorm(56 * 2), nrow=56) %*% chol(var.mat, pivot =T)
+    # X.cov <- matrix(rnorm(56 * 2), nrow=56) %*% chol2inv(var.mat)
+ 
+   alpha.beta  <-  outer(rep(1,56), c(mu.int=230, mu.slope=60)) + X.cov
+#   var(alpha.beta)
+  mu <- alpha.beta[Data$x1, 1] + alpha.beta[Data$x1, 2] * Data$x2  
+  LL <- sum(dnorm(Data$y, mu, 30))
+   LP <- LL 
+# Model out
+  yhat <- rnorm(length(mu) ,mu, 30)
+  Modelout <- list(LP=LP, Dev= -2*LL, Monitor=c(LP), yhat=yhat, parm=parm)
+  return(Modelout)                 }
+###
+?'%*%'
+
+x <- 1:4
+(z <- x %*% x)    # scalar ("inner") product (1 x 1 matrix)
+drop(z)             # as scalar
+
+y <- diag(x)
+z <- matrix(1:12, ncol = 3, nrow = 4)
+y %*% z
+y %*% x
+x %*% z
+ pivot =
+
+
+#  MCMC ~~~~~~~~~~~~~~~~~~
+  parm <- c(sd.int=rlnorm(1), sd.slope=rlnorm(1), 
+             rho=runif(1,-1,1))
+   parm.names <- names(parm)
+   mon.names <- c('LP')
+   Data <- list(y=mass, x1=pop, x2=length, parm.names=parm.names, mon.names=mon.names)
+   out <- LaplacesDemon(Model, Initial.Values=parm, Data=Data,
+                        Iterations=100, Status=50, Thinning=30)
+
+
+@
+
+
+
+

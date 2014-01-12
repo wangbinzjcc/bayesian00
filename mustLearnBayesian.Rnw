@@ -452,21 +452,880 @@ plot(out, BurnIn=50, Data, PDF=F)
 @
 呵呵 结果还不错吧！
 
+8.2 现在来看一下线性回归里面有哪些奥秘吧？
+<<8.2 linear regression>>=
+#
+n <- 1600 # Number of years
+a <- 40 # Intercept
+b <- -1.5 # Slope
+sigma2 <- 25 # Residual variance
+x <- 1:n  # Values of covariate year
+eps <- rnorm(n, mean= 0, sd= sqrt(sigma2))
+y <- a + b*x + eps # Assemble data set
+#
+plot((x+1989), y, xlab = "Year", las = 1, ylab = "Prop. occupied (%)",
+     cex = 1.2)
+summary(lm(y~I(x+1989)))
+abline(lm(y~I(x+1989)), col='blue',lwd=2)
+##~~~~~~~~~~~~~~~~~~~~~~~~ 
+require(LaplacesDemon)
+###################################
+#
+# Data  ~~~~~~~~~~~~~~~~~~~~~~~~~~
+ 
+mon.names <- c('LP')
+
+parm.names <- as.parm.names(list(alpha=0, beta=0, sigma=0))
+  PGF <- function(Data)return(c(rnormv(2, 0, 1000),log(rhalfcauchy(1, 25))))
+Data <- MyData <- list(  PGF=PGF,
+                       x=x, mon.names=mon.names,
+               parm.names=parm.names, y=y)
+#40.3.Model
+Model<-function(parm,Data)
+{
+###Parameters
+  alpha <- parm[1]
+  beta  <- parm[2]
+  sigma <- parm[3]
+###Log(PriorDensities)
+  alpha.prior <- dnormv(alpha, 0, 1000, log=TRUE)
+  beta.prior <- dnormv(beta, 0, 1000, log=TRUE)
+  sigma.prior <- dgamma(sigma, 25, log=TRUE)
+###Log-Likelihood
+  mu <- alpha +  beta * Data$x
+  LL <- sum(dnorm(Data$y, mu, sigma,log=TRUE))
+  ###Log-Posterior
+  LP <- LL + alpha.prior + beta.prior + sigma.prior
+  y.new <- rnorm(length(mu), mu, sigma)
+#### Model out
+  Modelout <- list(LP=LP, Dev=-2*LL, 
+                   Monitor=c(LP),
+                   yhat=y.new, parm=parm)
+  #
+  return(Modelout)
+}
+# Initial Values
+parm <- Initial.Values<-c(0, 0, 0)
+##8.2 MCMC ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# MCMC settings
+ni <- 50000      # Number of draws from posterior (for each chain)
+st <- 5000      # Steps when status message should be given
+nt <- 100       # Thinning rate #  Abate autocorrelation
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=MyData, Initial.Values, Iterations=ni, Status=st, Thinning=nt)
+# Have a look at some summary statistics
+out 
+#
+summary(lm(y~x))
+#
+attributes(out)
+str(out)
+lapply(1:28,function(x){out[[x]]})
+
+#  n <- 160       # Number of years
+#  a <- 40        # Intercept
+#  b <- -1.5      # Slope
+#  sigma  <- 5    # residuals
+#
+# Plotting output
+plot(out, BurnIn=100, Data, PDF=F)
+#   first plot
+#   second plot
+#   thrid plot
+
+@
+为什么会两次不同的计算会有如此大的误差呢？是贝叶斯方法不行呢？
+还有在什么地方没搞对呢？
 
 
+现在进行第9章
+正态一重方差分析
+<<9.2 FIXED EFFECTS ANOVA>>=
+# data
+ngroups <- 5
+nsample <- 10
+pop.means <- c(50, 40, 45, 55, 60)
+sigma <- 3
+
+n <- ngroups * nsample
+eps <- rnorm(n, 0, sigma)
+x <- rep(1:5, rep(nsample, ngroups))
+means <- rep(pop.means, rep(nsample, ngroups))
+X <- as.matrix(model.matrix(~as.factor(x)-1))
+X
+y <- as.numeric(X %*% as.matrix(pop.means) + eps)
+boxplot(y~x, col='grey',xlab='population', ylab='svl',main='',las=1)
+###
+
+anova(lm(y~as.factor(x)))
+summary(lm(y~as.factor(x)-1))
+###   9.2 FIXED EFFECTS ANOVA
+#bayesian ~~~~~~~~~~~~~~~~~~~
+ 
+mon.names <- c('LP','sigma','effe2','effe3','effe4','effe5','test1','test2')
+
+parm.names <- as.parm.names(list(alpha=1:5,log.sigma=log(1)))
+  PGF <- function(Data)return(c(rnormv(2, 0, 1000),log(rhalfcauchy(1, 25))))
+Data <- MyData <- list(  PGF=PGF,
+                       x=x, mon.names=mon.names,
+               parm.names=parm.names, y=y)
+# Initial Values
+parm <- Initial.Values<-c(alpha=rep(0,times=5),log.sigma= 1)
+
+###
+
+Model<-function(parm,Data)
+{
+###Parameters
+   alpha <- parm[1:5]
+   sigma <- exp(parm[6])
+###Log(PriorDensities)
+  alpha.prior <- sum(dnormv(alpha, 0, 1000, log=TRUE))
+  sigma.prior <- dgamma(sigma, 25, log=TRUE)
+###Log-Likelihood
+  mu <- alpha[x]
+  LL <- sum(dnorm(Data$y, mu, sigma,log=TRUE))
+  ###Log-Posterior
+  LP <- LL + alpha.prior + sigma.prior
+
+### derived quantities
+   effe2 <- alpha[2]-alpha[1]
+   effe3 <- alpha[3]-alpha[2]
+   effe4 <- alpha[4]-alpha[3]
+   effe5 <- alpha[5]-alpha[4]
+   test1 <- (effe2 + effe3) - (effe4 + effe5)
+   test2 <- effe5 - 2 * effe4
+  #   
+   y.new <- rnorm(length(mu), mu, sigma)
+#### Model out
+  Modelout <- list(LP=LP, Dev=-2*LL, 
+         Monitor=c(LP, sigma, effe2, effe3, effe4, effe5, test1, test2),
+                   yhat=y.new, parm=parm)
+  #
+  return(Modelout)
+}
+# Initial Values
+parm <- Initial.Values<-c(alpha=1:5,log.sigma= log(1))
+##8.2 MCMC ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# MCMC settings
+ni <- 50000      # Number of draws from posterior (for each chain)
+st <- 5000      # Steps when status message should be given
+nt <- 50       # Thinning rate #  Abate autocorrelation
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=MyData, Initial.Values, Iterations=ni, Status=st, Thinning=nt)
+
+
+
+# Have a look at some summary statistics
+out 
+#
+summary(lm(y~x))
+#
+attributes(out)
+
+#  pop.means <- c(50, 40, 45, 55, 60)
+#  sigma <- 3
+
+# Plotting output
+plot(out, BurnIn=50, Data, PDF=F)
+  #1
+  #2
+  #3
+  #4
+  #5
+  #6
+
+
+@
+哈哈  还不错！！
+
+
+9.3 RANDOM-EFFECTS ANOVA
+<<9.3 RANDOM-EFFECTS ANOVA>>=
+# data
+npop <- 10
+nsample <- 12
+n <- npop * nsample
+
+pop.grand.means <- 50
+pop.sd <- 25
+pop.means <- rnorm(n=npop, mean= pop.grand.means, sd=pop.sd)
+sigma <- 3
+eps <- rnorm(n, 0, sigma)
+
+x <- rep(1:npop, rep(nsample, npop))
+X <- as.matrix(model.matrix(~as.factor(x)-1))
+y <- as.numeric(X %*% as.matrix(pop.means) + eps)
+#
+boxplot(y~x, col='grey',xlab='population', ylab='svl',main='',las=1)
+abline(h=pop.grand.means)
+###
+require(lme4)
+pop <- as.factor(x)
+lme.fit <- lmer(y~1+1|pop,REML=T); lme.fit
+ranef(lme.fit)
+###   9.3 RANDOM EFFECTS ANOVA
+#bayesian ~~~~~~~~~~~~~~~~~~~
+mon.names <- c("LP", paste('effe',1:10))
+parm.names <- as.parm.names(list(pop.mean=1:10,mu=runif(1,0,100), 
+                                 sigma.group=rlnorm(1), sigma.res=rlnorm(1)))
+PGF <- function(Data)return(c(rnormv(11, 0, 1000),log(rhalfcauchy(2, 25))))
+
+Data <- MyData <- list( PGF=PGF ,x=x, mon.names=mon.names, parm.names=parm.names, y=y)
+###
+Model<-function(parm,Data)
+{
+###Parameters
+  pop.mean <- parm[1:10]  # black line *10
+  mu  <- parm[11]     # 50
+  sigma.group <- exp(parm[12])
+  sigma.res <- exp(parm[13])
+  #
+###Log(PriorDensities)
+    mu.prior <- dnormv(mu,0,1000, log=T)
+  #
+    pop.mean.prior <- sum(dnorm(pop.mean, mu, sigma.group, log=T))
+    sigma.group.prior <- dgamma(sigma.group, 25, log=T) 
+  #
+    sigam.res.prior <-  dgamma(sigma.res, 25, log=T) 
+  ###Log-Likelihood
+  mean <- pop.mean[x]
+  LL <- sum(dnorm(Data$y, mean, sigma.res,log=T))
+  ###Log-Posterior
+  LP <- LL + pop.mean.prior +  mu.prior + sigma.group.prior + sigam.res.prior 
+### derived quantities
+   effe <- pop.mean-mu  #
+  #   
+   y.new <- rnorm(length(mean), mean,sigma.res)
+#### Model out
+  Modelout <- list(LP=LP, Dev=-2*LL, 
+         Monitor=c(LP, effe), yhat=y.new, parm=parm)
+  #
+  return(Modelout)
+}
+# Initial Values
+parm <- Initial.Values <- c(pop.mean=1:10, mu=50, sigma.group=log(1), sigma.res=log(1))
+##8.2 MCMC ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# MCMC settings
+ni <- 200000      # Number of draws from posterior
+st <- 5000      # Steps when status message should be given
+nt <- 100       # Thinning rate #  Abate autocorrelation
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=MyData, Initial.Values, Iterations=ni, Status=st, Thinning=nt)
+
+
+
+# Have a look at some summary statistics
+out 
+#
+pop.grand.means <- 50
+pop.sd <- 25
+pop.means <- rnorm(n=npop, mean= pop.grand.means, sd=pop.sd)
+sigma <- 3
+eps <- rnorm(n, 0, sigma)
+
+mean(pop.means)
+
+x <- rep(1:npop, rep(nsample, npop))
+X <- as.matrix(model.matrix(~as.factor(x)-1))
+y <- as.numeric(X %*% as.matrix(pop.means) + eps)
+#  sigma <- 3
+
+# Plotting output
+plot(out, BurnIn=100, Data, PDF=F)
+  #1
+  #2
+  #3
+  #4
+  #5
+  #6
+
+@
+
+
+10.2 data generation
+<<10.2 normal two-way anova>>=
+# choose sample size
+ n.pop <- 5
+ n.elev <- 3
+ nsample <- 12
+ n <- n.pop * nsample
+  
+# create factor levels  
+ pop <- gl(n=n.pop, k=nsample, length=n)
+ elev <-gl(n=n.elev, k=nsample/n.elev, length=n)
+ 
+# choose effects
+  baseline <- 40
+  pop.effects <- c(-10, -5, 5, 10)
+  elev.effects <- c(5,10)
+  interaction.effects <- c(-2, 3, 0, 4, 4, 0, 3, -2)
+  all.effects <- c(baseline, pop.effects, elev.effects, interaction.effects)
+  sigma <- 3
+  eps <- rnorm(n,0,sigma)
+  X <- as.matrix(model.matrix(~pop*elev))
+  X
+dim(X)
+  
+  wing <- as.numeric(as.matrix(X) %*% as.matrix(all.effects)+eps)
+  boxplot(wing~elev*pop, col='grey', xlab='Elevation-by-Population',
+        ylab='Wing length', main='Simulated data set', las=1,
+        ylim=c(20,70) )
+  abline(h=40)
+#
+
+require(lattice)
+  xyplot(wing~ elev|pop,ylab='Wing length', xlab='Elevation', main='Population specific relationship between wing and elevation class')
+  xyplot(wing~pop|elev,ylab='Wing length', xlab='Population',main='Elevation specific relationship between wing and population')
+
+#
+lm(wing ~ pop*elev)
+all.effects
+  n.iter <- 1000
+estimates <- array(dim=c(n.iter, length(all.effects)))
+
+for(i in 1:n.iter){
+  print(i)
+  eps <- rnorm(n, 0, sigma)
+  y <- as.numeric(as.matrix(X) %*% as.matrix(all.effects) + eps)
+  fit.model <- lm(y ~ pop*elev)
+  estimates[i,] <-fit.model$coefficients
+}
+  apply(estimates, 2, mean)
+  all.effects
+#
+### 10.4 analysis using R
+  mainfit <- lm(wing ~ elev + pop)
+  mainfit
+#
+  intfit <- lm(wing ~ elev*pop - 1 - pop - elev)
+  intfit
+### 10.5 anglysis using Bayesian
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+require(LaplacesDemon)
+
+Model <- function(parm, Data){
+  ### Parameters
+  alpha <- parm[1]
+  beta.pop <- parm[2:5]; beta.pop.1 <- 0
+  beta.elev <- parm[6:7]; beta.elev.1 <- 0
+  sigma <- exp(parm[8])
+  ### Log(Prior Densities)
+    alpha.prior <- dnorm(alpha, 0, 1000^0.5, log=T)
+beta.pop.prior  <- sum(dnorm(beta.pop, 0, 1000^0.5, log=T))
+beta.elev.prior <- sum(dnorm(beta.elev, 0, 1000^0.5, log=T))
+    sigma.prior <- dgamma(sigma, 25, log=T)
+  ### Log-Likelihood
+  mean <- alpha + c(beta.pop.1, beta.pop)[pop] + 
+            c(beta.elev.1, beta.elev)[elev]
+  LL <- sum(dnorm(Data$y, mean, sigma, log=T))
+  ### Log-Posterior
+  LP <- LL + alpha.prior + beta.pop.prior +
+        beta.elev.prior + sigma.prior
+  Modelout <- list(LP=LP, Dev=-2*LL, Monitor=c(LP,sigma),
+     yhat=rnorm(length(mean),mean,sigma),parm=parm)
+return(Modelout)
+}
+#
+parm <- c(alpha=1,beta.pop=1:4,beta.elev=1:2,log.sigma=1)
+parm.names <- as.parm.names(parm)
+  mon.names <- c('LP', 'sigma')
+Data <- list(y=y, pop=pop, elev=elev,  parm.names=parm.names,
+             mon.names=mon.names)
+#
+ni <- 100000      # Number of draws from posterior
+st <- 5000      # Steps when status message should be given
+nt <- 50       # Thinning rate #  Abate autocorrelation
+nc <- 5
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=Data, Initial.Values=parm, Iterations=ni, Status=st, Thinning=nt,Chains=nc)
+
+out
+
+ all.effects
+# Plotting output
+plot(out, BurnIn=50, Data, PDF=F)
+  #1
+  #2
+  #3
+  #4
+  #5
+  #6
+
+
+  @
+ok 这一章就告一段落了。 main-effects anova using bayesion
+
+
+<<10.5.2 interaction-effects anova>>=
+# choose sample size
+ n.pop <- 5
+ n.elev <- 3
+ nsample <- 12
+ n <- n.pop * nsample
+  
+# create factor levels  
+ pop <- gl(n=n.pop, k=nsample, length=n)
+ elev <-gl(n=n.elev, k=nsample/n.elev, length=n)
+ 
+# choose effects
+  baseline <- 40
+  pop.effects <- c(-10, -5, 5, 10)
+  elev.effects <- c(5,10)
+  interaction.effects <- c(-2, 3, 0, 4, 4, 0, 3, -2)
+  all.effects <- c(baseline, pop.effects, elev.effects, interaction.effects)
+  sigma <- 3
+  eps <- rnorm(n,0,sigma)
+  X <- as.matrix(model.matrix(~pop*elev))
+  X
+dim(X)
+  
+  wing <- as.numeric(as.matrix(X) %*% as.matrix(all.effects)+eps)
+x11()
+boxplot(wing~elev*pop, col='grey', xlab='Elevation-by-Population', ylab='Wing length', main='Simulated data set', las=1, ylim=c(20,70) )
+  abline(h=40)
+####
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Model <- function(parm, Data){
+  ### Parameters
+  group.mean <-  parm[1 : (n.pop*n.elev)]
+  sigma <- exp(parm[16])
+  ### Log(Prior Densities)
+  group.mean.prior <- sum(dnorm(group.mean, 0, 1000^0.5, log=T))
+  sigma.prior <- dgamma(sigma, 25, log=T)
+  ### Log-Likelihood
+  mean <- group.mean[rep(1:15,each=4)]
+  LL <- sum(dnorm(Data$y, mean, sigma, log=T))
+  ### Log-Posterior
+  LP <- LL + group.mean.prior + sigma.prior
+  Modelout <- list(LP=LP, Dev=-2*LL, Monitor=c(LP, sigma),
+              yhat=rnorm(length(mean), mean, sigma), parm=parm)
+return(Modelout)
+}
+#
+parm <- c(group.mean= 1:15, log.sigma=log(1))
+group.names <- paste('pop', rep(1:5, each=3),' elev', rep(1:3, times=5), sep='')  
+parm.names <- c(group.names, 'log.sigma')
+mon.names <- c('LP', 'sigma')
+Data <- list(y=wing, parm.names=parm.names,
+             mon.names=mon.names)
+#
+ni <- 100000      # Number of draws from posterior
+st <- 5000      # Steps when status message should be given
+nt <- 50       # Thinning rate #  Abate autocorrelation
+nc <- 5
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=Data, Initial.Values=parm, Iterations=ni, Status=st, Thinning=nt,Chains=nc)
+
+out
+dat <- as.data.frame(out$Summary2)[1:15,]
+x <- 1:15
+plot(x,dat$Mean[1:15],xlab='Elev-by-population',las=1,
+   ylab='predicted wing-length', cex=1.5, ylim=c(20,70))
+abline(h=40)
+segments(x, dat$Mean - dat$SD, x, dat$Mean + dat$SD)
+
+attributes(out)
+ all.effects
+# Plotting output
+plot(out, BurnIn=50, Data, PDF=F)
+  #1
+  #2
+  #3
+  #4
+  #5
+  #6
+
+@
+好了第十章结束了，接下来要进入更高级的阶段了，让我们拭目以待吧。
+
+
+
+第十一章 general linear model(ANCONA)
+
+<<11.2  linear model>>=
+n.groups <- 3
+n.sample <- 10
+n <- n.groups*n.sample
+x <- rep(1:n.groups, rep(n.sample, n.groups))
+pop <- factor(x, labels=c('pyrenees', 'massif central', 'jura'))
+length <- runif(n, 45, 70)
+Xmat <- model.matrix(~ pop*length)
+print(Xmat, dig=2)
+beta.vec <- c(250, 150, 200, 6, 3, 4)
+lin.pred <- Xmat[,] %*% beta.vec
+eps <- rnorm(n=n, mean=0, sd=10)
+mass <- lin.pred +eps
+#
+ hist(mass)
+matplot(cbind(length[1:10], length[11:20], length[21:30]),
+        cbind(mass[1:10],mass[11:20], mass[21:30]),
+        ylim=c(0,max(mass)), ylab='body mass (g)',
+        xlab=' Body length (cm)', col=c('red','green','blue'),
+        pch=c('P', 'M', 'J'),las=1, cex=1.2, cex.lab=1.5)
+#
+summary(lm(mass ~ pop * length))
+
+beta.vec
+###~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#now let's use bayesian
+Model <- function(parm, Data){
+  ### Parametera
+  alpha <- parm[1:3]
+  beta <- parm[4:6]
+  sigma <- exp(parm[7])
+  ### Log(Prior Densities)
+   alpha.prior <- sum(dnorm(alpha, 0, 1000^0.5, log=T))
+   beta.prior <- sum(dnorm(beta, 0, 1000^0.5, log=T))
+   sigma.prior <- dgamma(sigma, 25, log=T)
+  ### Log-Likelihood
+   mu <- alpha[pop] + beta[pop]*length
+   LL <- sum(dnorm(Data$y, mu, sigma, log=T))
+  ### Log-Posterior
+   LP <- LL + alpha.prior + beta.prior +sigma.prior
+  ### Modelout
+   a.effe2 <- alpha[2] - alpha[1]
+   a.effe3 <- alpha[3] - alpha[1]
+   b.effe2 <- beta[2] - beta[1]
+   b.effe3 <- beta[3] - beta[1]
+  #
+    test1 <- beta[3] - beta[2] 
+  Modelout <- list(LP=LP, Dev= -2*LL,
+               Monitor=c(LP,sigma,a.effe2,a.effe3, b.effe2, b.effe3),
+                  yhat=rnorm(length(mu),mu,sigma), parm=parm)
+  return(Modelout)
+}
+#
+  parm <- c(alpha=1:3, beta=1:3, log.sigma=1)
+  parm.names <- as.parm.names(parm)
+mon.names <- c('LP', 'sigma', 'a.effe2', 'a.effe3', 'b.effe2', 'b.effe3')
+  Data <- list(parm.names=parm.names, mon.names=mon.names,
+               y=mass,pop=x,length=length)
+#  
+ni <- 100000      # Number of draws from posterior
+st <- 5000      # Steps when status message should be given
+nt <- 50       # Thinning rate #  Abate autocorrelation
+nc <- 5
+# Run LaplacesDemon
+out <- LaplacesDemon(Model, Data=Data, Initial.Values=parm, Iterations=ni, Status=st, Thinning=nt,Chains=nc)
+#
+out
+#
+beta.vec
+#
+# Plotting output
+plot(out, BurnIn=50, Data, PDF=F)
+  #1
+  #2
+  #3
+  #4
+  #5
+  #6
+@
+
+  
+第十二章 general linear model(ANCONA)
+<<>>=
+n.groups <- 56 # Number of populations
+n.sample <- 10 # Number of vipers in each pop
+n <- n.groups * n.sample # Total number of data points
+pop <- gl(n = n.groups, k = n.sample) # Indicator for population
+
+# Body length (cm)
+original.length <- runif(n, 45, 70)
+mn <- mean(original.length)
+sd <- sd(original.length)
+cat("Mean and sd used to normalise.original length:", mn, sd, "\n\n")
+length <- (original.length - mn) / sd
+
+hist(length, col = "grey")
+
+Xmat <- model.matrix(~ pop*length- 1- length)
+attributes(Xmat)
+
+
+
+intercept.mean <- 230 # mu alpha
+intercept.sd <- 20 # sigma alpha
+slope.mean <- 60 # mu beta
+slope.sd <- 30 # sigma beta
+intercept.effects <- rnorm(n=n.groups, mean=intercept.mean, sd=intercept.sd)
+slope.effects <- rnorm(n=n.groups, mean=slope.mean, sd=slope.sd)
+all.effects <- c(intercept.effects, slope.effects) # Put them all together
+
+lin.pred <- Xmat[,] %*% all.effects # Value of lin.predictor
+eps <- rnorm(n=n, mean=0, sd=30) # residuals
+mass <- lin.pred + eps # response lin.pred + residual
+hist(mass, col="grey") # Inspect what we've created
+
+library("lattice")
+xyplot(mass ~ length | pop)
+
+
+library('lme4')
+lme.fit1 <- lmer(mass ~ length + (1 | pop), REML = TRUE)
+lme.fit1
+summary(lme.fit1)
+
+#################################################
+#  bayesian  
+require(LaplacesDemon)
+####~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Write model
+
+Model=function(parm, Data){
+# Priors
+  alpha = parm[1:56]
+  beta  = parm[57:112]
+  #
+  alpha.mu = parm[113]
+  alpha.sigm = exp(parm[114])
+  #
+  beta.mu = parm[115]
+  beta.sigm = exp(parm[116])
+  #
+  sigma = exp(parm[117])  
+  #
+# Log(Prior Densities) 
+  alpha.prior <- sum(dnorm(alpha, alpha.mu, alpha.sigm, log=T))
+  alpha.mu.prior <- dnorm(alpha.mu, 0, 1000^.5, log=T)
+  alpha.sigm.prior <- dgamma(alpha.sigm, 25, log=T)
+  # 
+  beta.prior <- sum(dnorm(beta, beta.mu, beta.sigm, log=T))
+  beta.mu.prior <- dnorm(beta.mu, 0, 1000^.5, log=T)
+  beta.sigm.prior <- dgamma(beta.sigm, 25, log=T)
+  #
+  sigma.prior <- dgamma(sigma,25, log=T)
+# Log-Likelihood
+  mu <- alpha[Data$pop] + beta[Data$pop]*length
+  LL <- sum(dnorm(Data$mass, mu, sigma, log=T))
+# Log-Posterior
+  LP　<- LL + alpha.prior + alpha.mu.prior + alpha.sigm.prior 
+            + beta.prior + beta.mu.prior + beta.sigm.prior +　sigma.prior
+# ModelOut
+  Modelout <- list(LP=LP, Dev=-2*LL,
+                   Monitor=c(LP, alpha.sigm, beta.sigm, sigma),
+                   yhat=rnorm(length(mu), mu, sigma), parm=parm)
+}
+##NAMES
+  parm <- c(alpha=1:56, beta=1:56, alpha.mu=1, alpha.sigm.log=abs(1),
+            beta.mu=1, beta.sigm.log=abs(1), sigma.log=abs(1))
+  mon.names <- c('LP','alpha.sigm', 'beta.sigm', 'sigma')
+  parm.names <- names(parm)
+  Data <- list(mass=mass,pop=pop,length=length,parm.names=parm.names,mon.names=mon.names)
+##MCMC
+ out <- LaplacesDemon(Model, Data=Data, Initial.Values=parm,
+                      Iterations=500000, Status=5000, Thinning=50)
+#
+out
+  intercept.mean ; slope.mean ; intercept.sd ; slope.sd ; sd(eps)
+
+ plot(out, BurnIn=200, Data, PDF=F)
+
+#
+library('lme4')
+lme.fit2 <- lmer(mass ~ length + (1 | pop) + ( 0+ length | pop))
+lme.fit2
+
+#########
+#   bayesian  的结果 也太不准了吧
+@
+   这bayesian 的结果 也太不准了吧？ 到底是什么原因呢？先不去深究。还是继续往下走吧。
+   
+
+
+<<12.5 random-coefficients model with correlation>>=
+n.groups <- 20
+n.sample <- 10
+n <- n.groups * n.sample
+pop <- gl(n = n.groups, k = n.sample)
+
+original.length <- runif(n, 45, 70) # Body length (cm)
+mn <- mean(original.length)
+sd <- sd(original.length)
+cat("Mean and sd used to normalise.original length:", mn, sd, "\n\n")
+length <- (original.length- mn) / sd
+hist(length, col = "grey")
+
+
+Xmat <- model.matrix(~pop*length- 1- length)
+print(Xmat[1:21,], dig = 2) # Print top 21 rows
+
+require(mnormt)
+# ?rmnorm # Calls help file
+ 
+intercept.mean <- 230 # Values for five hyperparameters
+intercept.sd <- 20
+slope.mean <- 60
+slope.sd <- 30
+intercept.slope.covariance <- 400
+mu.vector <- c(intercept.mean, slope.mean)
+var.cova.matrix <- matrix(c(intercept.sd^2,intercept.slope.covariance,
+intercept.slope.covariance, slope.sd^2),2,2)
+effects <- rmnorm(n = n.groups, mean = mu.vector, varcov = var.cova.matrix)
+
+
+sum(dmnorm(x=effects, mean=mu.vector, varcov=var.cova.matrix, log=T))
+
+effects <- rmnorm(n = 56, mean = c(80,10), 
+                  varcov = matrix(c(100,120, 120, 200), 2, 2))
+
+sum(  dmnorm(x= cbind(rep(80, 56), rep(10, 56)), 
+                          mean=c(80, 10),
+                          varcov=matrix(c(100,120,
+                                 120, 200), 2, 2),
+                   log = T) ) 
+
+#effects # Look at what we've created
+apply(effects, 2, mean)
+apply(effects, 2, sd)
+
+plot(effects[,1], effects[,2])
+summary(lm(effects[,1] ~ effects[,2]))
+var(effects)
+
+intercept.effects <- effects[,1]
+slope.effects <- effects[,2]
+all.effects <- c(intercept.effects, slope.effects) # Put them all together
+ 
+lin.pred <- Xmat[,] %*% all.effects # Value of lin.predictor
+eps <- rnorm(n= n, mean= 0, sd= 30) # residuals
+mass <- lin.pred + eps # response lin.pred + residual
+hist(mass, col= "grey") # Inspect what we've created
+
+library("lattice")
+xyplot(mass ~ length | pop)
+
+library('lme4')
+lme.fit3 <- lmer(mass ~ length + (length | pop))
+lme.fit3
+
+##############################################################
+# bayesian ~~~~~~~~~~~~~~~~
+require(LaplacesDemon) 
+require(mnormt)
+#####################################
+# Define model
+
+
+n.groups <-  56
+n.sample <- 10
+n <- n.groups * n.sample
+pop <- gl(n = n.groups, k = n.sample)
+
+original.length <- runif(n, 45, 70) # Body length (cm)
+mn <- mean(original.length)
+sd <- sd(original.length)
+cat("Mean and sd used to normalise.original length:", mn, sd, "\n\n")
+length <- (original.length- mn) / sd
+hist(length, col = "grey")
+
+Xmat <- model.matrix(~pop*length- 1- length)
+
+intercept.mean <- 230 # Values for five hyperparameters
+intercept.sd <- 20
+slope.mean <- 60
+slope.sd <- 30
+intercept.slope.covariance <- 400
+mu.vector <- c(intercept.mean, slope.mean)
+var.cova.matrix <- matrix(c(intercept.sd^2,intercept.slope.covariance,
+intercept.slope.covariance, slope.sd^2),2,2)
+effects <- rmnorm(n = n.groups, mean = mu.vector, varcov = var.cova.matrix)
+
+intercept.effects <- effects[,1]
+slope.effects <- effects[,2]
+all.effects <- c(intercept.effects, slope.effects) # Put them all together
+ 
+lin.pred <- Xmat[,] %*% all.effects # Value of lin.predictor
+eps <- rnorm(n= n, mean= 0, sd= 30) # residuals
+mass <- lin.pred + eps # response lin.pred + residual
+
+Model=function(parm, Data){
+# Priors
+  mu.int = parm[1]
+  mu.slope = parm[2]
+  sd.int =  (parm[3])
+  sd.slope =  (parm[4])
+  rho = parm[5]  
+  cov.s.i <-  (rho * sd.int * sd.slope)
+  sigma =  (parm[6])
+# Log(Prior Densities)   
+   mu.int.prior <- dnorm(mu.int, 0, 1000^.5, log=T)
+   mu.slope.prior <- dnorm(mu.slope, 0, 1000^.5, log=T) 
+   sd.int.prior <-  dnorm(sd.int, 0, 1000^.5, log=T) 
+   sd.slope.prior <-  dnorm(sd.slope, 0, 1000^.5, log=T) 
+   rho.prior <- dnorm(rho, 0, 1000^.5, log=T)
+   sigma.prior <- dgamma(sigma, 25, log=T)
+# Log-likelihood  
+   var.mat <- matrix(c(sd.int^2, cov.s.i, cov.s.i, sd.slope^2), 2, 2)
+
+  alpha.beta <- rmnorm(n = 56, mean = c(mu.int, mu.slope),
+                         varcov = pseudoinverse(var.mat))
+  alpha.beta <- as.data.frame(alpha.beta)
+ #   var(alpha.beta)
+  mu <- alpha.beta[Data$x1, 1] + alpha.beta[Data$x1, 2] * Data$x2  
+  LL <- sum(dnorm(Data$y, mu, sigma))
+  LP <- LL  + mu.int.prior + mu.slope.prior + sd.int.prior +sd.slope.prior + rho.prior + sigma.prior
+
+# Model out
+  Modelout <- list(LP=LP, Dev= -2*LL, Monitor=c(LP), yhat=rnorm(length(mu) ,mu, sigma), parm=parm)
+  return(Modelout)                 }
+###
+ 
+
+#  MCMC ~~~~~~~~~~~~~~~~~~
+   parm <- c(mu.int=rnorm(1,0,1), mu.slope=rnorm(1,0,1), 
+             sd.int=rlnorm(1), sd.slope=rlnorm(1), 
+             rho=runif(1,-1,1), sigma=rlnorm(1))
+   parm.names <- names(parm)
+   mon.names <- c('LP')
+   Data <- list(y=mass, x1=as.numeric(pop), x2=length, parm.names=parm.names, mon.names=mon.names)
+   out <- LaplacesDemon(Model, Initial.Values=parm, Data=Data,
+                        Iterations=1000, Status=500, Thinning=30)
+
+
+
+
+
+@
 
 \end{document}
 
+ 
+
+  
+
+rmnorm = function(n, mean, cov=diag(length(mean))) 
+{
+# generate a sample of n from the multivariate normal with 
+# mean vector "mean" and covariance matrix "cov"
+   L = chol(cov)
+   if(length(mean)!=nrow(L)) stop("length(mean) != nrow(cov)")
+   X = outer(rep(1,n), mean) + matrix(rnorm(n*length(mean)),nrow=n) %*% L
+   return(X)
+}
+
+x= data.frame(rmnorm(20000, mean=1:2,cov=matrix(c(1,2,2,5), nrow=2)))
+
+var(x)
+
+print(mean(x)) 
+print(cov(x))
 
 
 
+require(stats)
+dim(diag(3))
+diag(10, 3, 4) # guess what?
+all(diag(1:3) == {m <- matrix(0,3,3); diag(m) <- 1:3; m})
+
+diag(var(M <- cbind(X = 1:5, Y = stats::rnorm(5))))
+#-> vector with names "X" and "Y"
+
+rownames(M) <- c(colnames(M), rep("", 3));
+M; diag(M) #  named as well
 
 
-
-
-
-
-
-
+ ?chol
 
 
